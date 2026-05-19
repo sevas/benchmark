@@ -1,0 +1,247 @@
+System Information — SIGIL
+Generated : 2026-05-19T21:29:08
+
+=== CPU ===
+  Name             : Intel(R) Core(TM) i5-14600KF
+  Cores (physical) : 14
+  Logical procs    : 20
+  Max clock (MHz)  : 3500
+  Socket           : LGA1700
+
+=== RAM ===
+  Total physical   : 31.79 GB
+  DIMM Controller0-DIMM1: 16 GB  4800 MHz  ?
+  DIMM Controller1-DIMM1: 16 GB  4800 MHz  ?
+
+=== Storage (logical disks) ===
+  C:  total=930.2 GB  free=333.6 GB  fs=NTFS
+  D:  total=1863 GB  free=1170.5 GB  fs=NTFS
+  E:  total=931.5 GB  free=143.9 GB  fs=NTFS
+
+=== Physical disks ===
+  [0] Samsung SSD 870 EVO 2TB  SSD  1863 GB
+  [1] Samsung SSD 860 EVO 1TB  SSD  931.5 GB
+  [2] WD_BLACK SN770 1TB  SSD  931.5 GB
+  [3] General UDisk  Unspecified  14.6 GB
+
+=== OS ===
+  Caption    : Microsoft Windows 11 Home
+  Version    : 10.0.26200
+  Build      : 26200
+  Arch       : 64-bit
+
+=== Include file analysis (src/main.cpp) ===
+  Total include directives : 1483
+  Unique files included    : 1150
+
+=== Python module analysis ===
+  In-process import time  : 5.282319 s
+  Total modules loaded    : 2100
+  Top-level packages      : 204
+  Full process time       : 6.232 s  (pixi activation + Python startup + imports)
+
+  Packages:
+    PIL
+    __future__
+    __main__
+    __mp_main__
+    _abc
+    _ast
+    _asyncio
+    _bisect
+    _blake2
+    _bz2
+    _codecs
+    _collections
+    _collections_abc
+    _compat_pickle
+    _compression
+    _contextvars
+    _csparsetools
+    _csv
+    _ctypes
+    _cython_3_2_4
+    _cyutility
+    _datetime
+    _decimal
+    _frozen_importlib
+    _frozen_importlib_external
+    _functools
+    _hashlib
+    _heapq
+    _imp
+    _io
+    _json
+    _locale
+    _lzma
+    _moduleTNC
+    _multiprocessing
+    _ni_label
+    _opcode
+    _operator
+    _overlapped
+    _pickle
+    _queue
+    _random
+    _sha2
+    _signal
+    _sitebuiltins
+    _socket
+    _sre
+    _ssl
+    _stat
+    _string
+    _strptime
+    _struct
+    _thread
+    _tokenize
+    _typing
+    _uuid
+    _warnings
+    _weakref
+    _weakrefset
+    _winapi
+    _wmi
+    _zoneinfo
+    abc
+    argparse
+    array
+    ast
+    asyncio
+    atexit
+    base64
+    bdb
+    binascii
+    bisect
+    builtins
+    bz2
+    calendar
+    cmath
+    cmd
+    code
+    codecs
+    codeop
+    collections
+    concurrent
+    contextlib
+    contextvars
+    copy
+    copyreg
+    csv
+    ctypes
+    cycler
+    cython_runtime
+    dataclasses
+    datetime
+    dateutil
+    decimal
+    difflib
+    dis
+    email
+    encodings
+    enum
+    errno
+    fileinput
+    fnmatch
+    functools
+    gc
+    genericpath
+    gettext
+    glob
+    gzip
+    hashlib
+    heapq
+    hmac
+    html
+    http
+    importlib
+    inspect
+    io
+    ipaddress
+    itertools
+    jinja2
+    json
+    keyword
+    kiwisolver
+    linecache
+    locale
+    logging
+    lzma
+    markupsafe
+    marshal
+    math
+    matplotlib
+    mmap
+    mpl_toolkits
+    msvcrt
+    multiprocessing
+    nt
+    ntpath
+    nturl2path
+    numbers
+    numpy
+    opcode
+    operator
+    os
+    packaging
+    pandas
+    pathlib
+    pdb
+    pickle
+    pickletools
+    pkgutil
+    platform
+    plistlib
+    posixpath
+    pprint
+    pydoc
+    pyexpat
+    pyparsing
+    queue
+    quopri
+    random
+    re
+    reprlib
+    scipy
+    secrets
+    select
+    selectors
+    shlex
+    shutil
+    signal
+    site
+    six
+    socket
+    ssl
+    stat
+    string
+    struct
+    subprocess
+    sys
+    sysconfig
+    tarfile
+    tempfile
+    textwrap
+    threading
+    time
+    timeit
+    token
+    tokenize
+    torch
+    torchgen
+    traceback
+    types
+    typing
+    typing_extensions
+    unicodedata
+    unittest
+    urllib
+    uuid
+    warnings
+    weakref
+    winreg
+    xml
+    zipfile
+    zipimport
+    zlib
+    zoneinfo

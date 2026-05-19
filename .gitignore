@@ -11,7 +11,7 @@ node_benchmark/dist/
 # npm packages
 node_benchmark/node_modules/
 
-# Benchmark result files (machine-specific, not committed)
+# Benchmark result files are ignored by default; commit specific baselines explicitly.
 *.csv
 *.txt
 
