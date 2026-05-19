@@ -103,18 +103,28 @@ The label is free-form — any string is accepted.
 
 ### Cache modes
 
-The pixi cache is isolated per-run to `<repo>/.pixi_home/` so it never
-interferes with the user's own pixi installation. Two env vars are required:
-- `PIXI_HOME` — redirects pixi's global home directory
-- `RATTLER_CACHE_DIR` — redirects the actual conda package cache (`PIXI_HOME` alone does **not** move it; rattler defaults to `%LOCALAPPDATA%\rattler\cache`)
+Pixi global environments always land in `<repo>/.pixi_home/` (via `PIXI_HOME`)
+so they never interfere with the user's own global pixi installation.
+
+Use `-IsolateCache` to also redirect the conda **package cache** (`RATTLER_CACHE_DIR`)
+to `<repo>/.pixi_home/cache`. The isolated cache is wiped at startup to guarantee
+a clean initial state.
+
+| Flag | Package cache used |
+|---|---|
+| *(default)* | System cache (`%LOCALAPPDATA%\rattler\cache`) |
+| `-IsolateCache` | `<repo>/.pixi_home/cache` (wiped at startup) |
+
+The `-CacheMode` parameter controls what happens before each env-setup phase:
 
 | Mode | What it measures |
 |---|---|
-| `cold` | Full download **+** unpack — as if running on a clean machine |
-| `warm` | Unpack only — packages are already in the local cache |
-| `both` | Runs cold first, then warm; produces both rows in the same CSV file |
+| `cold` | Wipe cache before install → full download **+** unpack |
+| `warm` | Keep cache → unpack only (no download) |
+| `both` | Run cold first, then warm; produces both rows in the same CSV file |
 
 The cold-vs-warm delta isolates network/download cost from disk-IO cost.
+`-IsolateCache -CacheMode both` gives the most controlled measurement.
 
 The script requires no elevated (admin) privileges.
 

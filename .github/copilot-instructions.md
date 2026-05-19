@@ -26,20 +26,22 @@ pixi.exe                   ← bundled pixi binary (win-64); never remove
 
 `run_benchmark.ps1` accepts `-Benchmark cpp|python|node|all` (default `all`), an optional free-form `-Label <string>`, and an optional `-CacheMode cold|warm|both` (default `both`).  When a label is given it is appended to the hostname with an underscore in both the CSV filename and the `hostname` column (e.g. `WORKSTATION1_defender-on`), enabling same-machine / different-configuration comparisons in the plot tool.
 
-### Pixi cache isolation
+### Pixi home / cache isolation
 
-The script sets **both** env vars before any pixi call:
-- `$env:PIXI_HOME = "<repo>/.pixi_home"` — redirects pixi's global home (bin, global envs)
-- `$env:RATTLER_CACHE_DIR = "<repo>/.pixi_home/cache"` — redirects the conda package cache (`PIXI_HOME` alone does **not** move the cache; rattler uses `%LOCALAPPDATA%\rattler\cache` by default)
+`PIXI_HOME` is always set to `<repo>/.pixi_home` so pixi's global environments
+land in the repo and not in `~/.pixi`. This directory is excluded from git.
 
-This directory is **excluded from git** (see `.gitignore`).
+**`RATTLER_CACHE_DIR` is only set when `-IsolateCache` is passed.** By default
+the system rattler cache (`%LOCALAPPDATA%\rattler\cache`) is used. When
+`-IsolateCache` is set:
+- `RATTLER_CACHE_DIR` → `<repo>/.pixi_home/cache`
+- The cache dir is **wiped at startup** before any benchmark section runs
+- This ensures cold/warm measurements start from a known-clean state
+- `cold` within `-IsolateCache`: redundant wipe before each install (safe)
+- `warm`: keeps cache populated from the cold run earlier in the same session
 
-- **Cold cache**: delete `$pixiHome/cache` before `pixi install` → forces full download + unpack.
-- **Warm cache**: keep `$pixiHome/cache`, delete only the local `.pixi` env dir → measures unpack only.
-- **Phase names**: `cpp_env_setup_cold`, `cpp_env_setup_warm` (and same for `py_`, `node_`).
-  Legacy bare names (`cpp_env_setup` etc.) appear only in old CSV files (e.g. SIGIL.csv).
-
-The `Invoke-PixiEnvSetup` helper function handles clearing + timing + CSV recording for both modes.
+The `Invoke-PixiEnvSetup` helper handles clearing + timing + CSV recording for
+both cold and warm modes.
 Output files (`<hostname>.csv`, `<hostname>.txt`) are written to the repo root.
 
 ---

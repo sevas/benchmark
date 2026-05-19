@@ -22,9 +22,10 @@
     Results are appended to <hostname>.csv at the script root.
     A system-info text file is also written/updated at <hostname>.txt.
 
-    Pixi packages are cached in .pixi_home/ inside the repository root so the
-    benchmark is fully isolated from the user's own pixi installation.
-    Both PIXI_HOME and RATTLER_CACHE_DIR are redirected to this folder.
+    Pixi global environments are always redirected to .pixi_home/ in the repo root
+    (via PIXI_HOME) so they do not interfere with the user's global pixi install.
+    Use -IsolateCache to also redirect the conda package cache (RATTLER_CACHE_DIR)
+    to the same folder; this wipes the cache at startup for a reproducible baseline.
 
     For C++, MSVC (cl.exe) must be installed; vcvarsall.bat is located
     automatically via vswhere.exe or well-known Visual Studio install paths.
@@ -48,6 +49,12 @@
       both  — runs cold then warm in sequence (default); produces two CSV rows per
               env-setup phase, named *_env_setup_cold and *_env_setup_warm.
 
+.PARAMETER IsolateCache
+    When set, redirects RATTLER_CACHE_DIR (and PIXI_HOME) to .pixi_home/ inside
+    the repo root so the benchmark never touches the user's own conda package cache.
+    The isolated cache directory is wiped at startup to guarantee a clean initial state.
+    By default, the system rattler cache (%LOCALAPPDATA%\rattler\cache) is used.
+
 .EXAMPLE
     .\run_benchmark.ps1
     .\run_benchmark.ps1 -Benchmark cpp
@@ -57,6 +64,8 @@
     .\run_benchmark.ps1 -Benchmark cpp -Label "no-av"
     .\run_benchmark.ps1 -CacheMode cold
     .\run_benchmark.ps1 -CacheMode warm
+    .\run_benchmark.ps1 -IsolateCache
+    .\run_benchmark.ps1 -IsolateCache -CacheMode cold
 #>
 
 param(
@@ -73,7 +82,13 @@ param(
     #   warm  — keep cache then install   → measures unpack only
     #   both  — run cold first, then warm (default)
     [ValidateSet("cold", "warm", "both")]
-    [string]$CacheMode = "both"
+    [string]$CacheMode = "both",
+
+    # When set, redirects RATTLER_CACHE_DIR (and PIXI_HOME) to .pixi_home/ inside
+    # the repo root, fully isolating the benchmark from the user's own conda cache.
+    # The isolated cache is wiped at startup to guarantee a clean initial state.
+    # By default the system rattler cache (%LOCALAPPDATA%\rattler\cache) is used.
+    [switch]$IsolateCache
 )
 
 Set-StrictMode -Version Latest
@@ -322,15 +337,31 @@ $pyDir     = Join-Path $scriptDir "python_benchmark"
 $nodeDir   = Join-Path $scriptDir "node_benchmark"
 Set-Location $scriptDir
 
-# Redirect pixi's home AND package cache to a local directory so the benchmark
-# is completely isolated from the user's own pixi installation.
-# PIXI_HOME  — controls global envs/bin (pixi respects this natively)
-# RATTLER_CACHE_DIR — controls the conda package cache (PIXI_HOME alone does NOT move the cache)
+# ---------------------------------------------------------------------------
+# Pixi home / cache isolation
+# ---------------------------------------------------------------------------
+# PIXI_HOME        — controls global envs/bin (pixi respects this natively)
+# RATTLER_CACHE_DIR — controls the conda package cache (PIXI_HOME alone does NOT move it;
+#                    rattler defaults to %LOCALAPPDATA%\rattler\cache)
+#
+# When -IsolateCache is given both vars are redirected to .pixi_home/ in the repo
+# root, and the cache subdirectory is wiped at startup for a reproducible baseline.
+# By default the user's system cache is used (no env vars changed).
+
 $pixiHome = Join-Path $scriptDir ".pixi_home"
-$env:PIXI_HOME        = $pixiHome
-$env:RATTLER_CACHE_DIR = Join-Path $pixiHome "cache"
-Write-Host "  Pixi home (isolated) : $pixiHome"
-Write-Host "  Pixi cache (isolated): $($env:RATTLER_CACHE_DIR)"
+$env:PIXI_HOME = $pixiHome   # always redirect global home so pixi envs land in repo
+
+if ($IsolateCache) {
+    $env:RATTLER_CACHE_DIR = Join-Path $pixiHome "cache"
+    Write-Host "  Cache isolation      : ON  (.pixi_home\cache)"
+    Write-Host "  Wiping isolated cache at startup..."
+    if (Test-Path $env:RATTLER_CACHE_DIR) {
+        Remove-Item -Recurse -Force $env:RATTLER_CACHE_DIR
+    }
+} else {
+    Write-Host "  Cache isolation      : OFF (using system rattler cache)"
+}
+Write-Host "  Pixi home            : $pixiHome"
 
 # Use the bundled pixi binary so the benchmark is self-contained.
 $pixi = Join-Path $scriptDir "pixi.exe"
