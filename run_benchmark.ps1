@@ -351,30 +351,28 @@ Set-Location $scriptDir
 # RATTLER_CACHE_DIR — controls the conda package cache (PIXI_HOME alone does NOT move it;
 #                    rattler defaults to %LOCALAPPDATA%\rattler\cache)
 #
-# When -IsolateCache is given both vars are redirected to .pixi_home/ in the repo
-# root, and the cache subdirectory is wiped at startup for a reproducible baseline.
-# By default the user's system cache is used (no env vars changed).
-
-$pixiHome = Join-Path $scriptDir ".pixi_home"
-$env:PIXI_HOME = $pixiHome   # always redirect global home so pixi envs land in repo
+# Both vars are only set when -IsolateCache is given. Without it, the user's
+# system defaults are used untouched.
 
 if ($IsolateCache) {
+    $pixiHome = Join-Path $scriptDir ".pixi_home"
+    $env:PIXI_HOME        = $pixiHome
     $env:RATTLER_CACHE_DIR = Join-Path $pixiHome "cache"
 }
 
-# Resolve the effective rattler cache path (may or may not equal $env:RATTLER_CACHE_DIR).
+# Resolve the effective rattler cache path for display and cold-cache clearing.
 $rattlerCacheDir = if ($env:RATTLER_CACHE_DIR) {
     $env:RATTLER_CACHE_DIR
 } else {
     Join-Path $env:LOCALAPPDATA "rattler\cache"
 }
 
-Write-Host "  Pixi home            : $pixiHome"
 if ($IsolateCache) {
     Write-Host "  Cache isolation      : ON"
+    Write-Host "  Pixi home (isolated) : $($env:PIXI_HOME)"
     Write-Host "  Cache dir (isolated) : $rattlerCacheDir"
 } else {
-    Write-Host "  Cache isolation      : OFF"
+    Write-Host "  Cache isolation      : OFF (system defaults used)"
     Write-Host "  Cache dir (system)   : $rattlerCacheDir"
 }
 
