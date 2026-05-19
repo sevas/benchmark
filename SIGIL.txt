@@ -1,5 +1,5 @@
 System Information — SIGIL
-Generated : 2026-05-19T21:29:08
+Generated : 2026-05-19T22:33:17
 
 === CPU ===
   Name             : Intel(R) Core(TM) i5-14600KF
@@ -14,7 +14,7 @@ Generated : 2026-05-19T21:29:08
   DIMM Controller1-DIMM1: 16 GB  4800 MHz  ?
 
 === Storage (logical disks) ===
-  C:  total=930.2 GB  free=333.6 GB  fs=NTFS
+  C:  total=930.2 GB  free=341.2 GB  fs=NTFS
   D:  total=1863 GB  free=1170.5 GB  fs=NTFS
   E:  total=931.5 GB  free=143.9 GB  fs=NTFS
 
@@ -35,10 +35,10 @@ Generated : 2026-05-19T21:29:08
   Unique files included    : 1150
 
 === Python module analysis ===
-  In-process import time  : 5.282319 s
+  In-process import time  : 4.321346 s
   Total modules loaded    : 2100
   Top-level packages      : 204
-  Full process time       : 6.232 s  (pixi activation + Python startup + imports)
+  Full process time       : 5.151 s  (pixi activation + Python startup + imports)
 
   Packages:
     PIL
