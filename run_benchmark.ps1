@@ -58,6 +58,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# In PS7, $PSScriptRoot is always the script's directory.
+# $MyInvocation.MyCommand.Path can be empty in some invocation modes.
+if (-not $PSScriptRoot) {
+    Write-Error "PSScriptRoot is not set — please run this script as a file, not dot-sourced."
+    exit 1
+}
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -66,10 +73,11 @@ function Find-VcVarsAll {
     # Prefer vswhere.exe — ships with VS 2017+ installer
     $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
     if (Test-Path $vswhere) {
-        $vsPath = & $vswhere -latest -products * `
+        $vsPath = (& $vswhere -latest -products * `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath 2>$null
+            -property installationPath 2>$null) | Select-Object -First 1
         if ($vsPath) {
+            $vsPath = $vsPath.Trim()
             $candidate = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
             if (Test-Path $candidate) { return $candidate }
         }
@@ -239,7 +247,7 @@ function Write-SystemInfo {
 # Setup
 # ---------------------------------------------------------------------------
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = $PSScriptRoot
 $cppDir    = Join-Path $scriptDir "cpp_benchmark"
 $pyDir     = Join-Path $scriptDir "python_benchmark"
 $nodeDir   = Join-Path $scriptDir "node_benchmark"
@@ -326,7 +334,7 @@ if ($Benchmark -in @("cpp", "all")) {
     }
 
     Push-Location $cppDir
-    $tCppEnv  = Measure-Command { & $pixi install --locked 2>&1 | Out-Host }
+    $tCppEnv  = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
     $cppEnvExit = $LASTEXITCODE
     Pop-Location
     if ($cppEnvExit -ne 0) { throw "pixi install failed (exit $cppEnvExit)" }
@@ -342,7 +350,7 @@ if ($Benchmark -in @("cpp", "all")) {
     }
 
     Push-Location $cppDir
-    $tCppCmake  = Measure-Command { & $pixi run cmake-gen 2>&1 | Out-Host }
+    $tCppCmake  = Measure-Command { cmd /c "`"$pixi`" run cmake-gen 2>&1" | Out-Host }
     $cppCmakeExit = $LASTEXITCODE
     Pop-Location
     if ($cppCmakeExit -ne 0) { throw "cmake-gen failed (exit $cppCmakeExit)" }
@@ -352,7 +360,7 @@ if ($Benchmark -in @("cpp", "all")) {
     Write-Host "[C++] 3/3 cpp_build — cmake --build"
 
     Push-Location $cppDir
-    $tCppBuild  = Measure-Command { & $pixi run build 2>&1 | Out-Host }
+    $tCppBuild  = Measure-Command { cmd /c "`"$pixi`" run build 2>&1" | Out-Host }
     $cppBuildExit = $LASTEXITCODE
     Pop-Location
     if ($cppBuildExit -ne 0) { throw "build failed (exit $cppBuildExit)" }
@@ -378,7 +386,7 @@ if ($Benchmark -in @("python", "all")) {
     }
 
     Push-Location $pyDir
-    $tPyEnv  = Measure-Command { & $pixi install --locked 2>&1 | Out-Host }
+    $tPyEnv  = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
     $pyEnvExit = $LASTEXITCODE
     Pop-Location
     if ($pyEnvExit -ne 0) { throw "Python pixi install failed (exit $pyEnvExit)" }
@@ -450,7 +458,7 @@ if ($Benchmark -in @("node", "all")) {
     }
 
     Push-Location $nodeDir
-    $tNodeEnv = Measure-Command { & $pixi install --locked 2>&1 | Out-Host }
+    $tNodeEnv = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
     $nodeEnvExit = $LASTEXITCODE
     Pop-Location
     if ($nodeEnvExit -ne 0) { throw "Node.js pixi install failed (exit $nodeEnvExit)" }
@@ -477,7 +485,7 @@ if ($Benchmark -in @("node", "all")) {
     }
 
     Push-Location $nodeDir
-    $tNodeNpmInstall = Measure-Command { & $npm ci 2>&1 | Out-Host }
+    $tNodeNpmInstall = Measure-Command { cmd /c "`"$npm`" ci 2>&1" | Out-Host }
     $nodeNpmExit = $LASTEXITCODE
     Pop-Location
     if ($nodeNpmExit -ne 0) { throw "npm ci failed (exit $nodeNpmExit)" }
@@ -493,7 +501,7 @@ if ($Benchmark -in @("node", "all")) {
     }
 
     Push-Location $nodeDir
-    $tNodeBuild = Measure-Command { & $npm run build 2>&1 | Out-Host }
+    $tNodeBuild = Measure-Command { cmd /c "`"$npm`" run build 2>&1" | Out-Host }
     $nodeBuildExit = $LASTEXITCODE
     Pop-Location
     if ($nodeBuildExit -ne 0) { throw "npm run build failed (exit $nodeBuildExit)" }
