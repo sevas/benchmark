@@ -55,6 +55,10 @@
     The isolated cache directory is wiped at startup to guarantee a clean initial state.
     By default, the system rattler cache (%LOCALAPPDATA%\rattler\cache) is used.
 
+.PARAMETER Force
+    Skip all interactive y/n prompts, automatically answering yes.
+    Useful for CI pipelines or scripted/automated runs.
+
 .EXAMPLE
     .\run_benchmark.ps1
     .\run_benchmark.ps1 -Benchmark cpp
@@ -66,6 +70,8 @@
     .\run_benchmark.ps1 -CacheMode warm
     .\run_benchmark.ps1 -IsolateCache
     .\run_benchmark.ps1 -IsolateCache -CacheMode cold
+    .\run_benchmark.ps1 -IsolateCache -Force
+    .\run_benchmark.ps1 -CacheMode cold -Force
 #>
 
 param(
@@ -88,7 +94,11 @@ param(
     # the repo root, fully isolating the benchmark from the user's own conda cache.
     # The isolated cache is wiped at startup to guarantee a clean initial state.
     # By default the system rattler cache (%LOCALAPPDATA%\rattler\cache) is used.
-    [switch]$IsolateCache
+    [switch]$IsolateCache,
+
+    # Skip all interactive y/n prompts, answering yes automatically.
+    # Useful for CI or scripted runs.
+    [switch]$Force
 )
 
 Set-StrictMode -Version Latest
@@ -227,21 +237,18 @@ function Invoke-PixiEnvSetup {
         is appended automatically based on $CacheSuffix.
     .PARAMETER CacheSuffix
         "cold" or "warm".
-    .PARAMETER PixiHome
-        Path to the isolated PIXI_HOME used for this benchmark run.
     #>
     param(
         [string]$BenchDir,
         [string]$PhaseBase,
-        [string]$CacheSuffix,
-        [string]$PixiHome
+        [string]$CacheSuffix
     )
 
     if ($CacheSuffix -eq "cold") {
-        $cacheDir = Join-Path $PixiHome "cache"
-        if (Test-Path $cacheDir) {
-            Write-Host "  Clearing pixi cache at $cacheDir ..."
-            Remove-Item -Recurse -Force $cacheDir
+        # $rattlerCacheDir is a script-scope variable set during startup.
+        if (Test-Path $rattlerCacheDir) {
+            Write-Host "  Clearing rattler cache at $rattlerCacheDir ..."
+            Remove-Item -Recurse -Force $rattlerCacheDir
         }
     }
 
@@ -353,15 +360,60 @@ $env:PIXI_HOME = $pixiHome   # always redirect global home so pixi envs land in 
 
 if ($IsolateCache) {
     $env:RATTLER_CACHE_DIR = Join-Path $pixiHome "cache"
-    Write-Host "  Cache isolation      : ON  (.pixi_home\cache)"
-    Write-Host "  Wiping isolated cache at startup..."
-    if (Test-Path $env:RATTLER_CACHE_DIR) {
-        Remove-Item -Recurse -Force $env:RATTLER_CACHE_DIR
-    }
-} else {
-    Write-Host "  Cache isolation      : OFF (using system rattler cache)"
 }
+
+# Resolve the effective rattler cache path (may or may not equal $env:RATTLER_CACHE_DIR).
+$rattlerCacheDir = if ($env:RATTLER_CACHE_DIR) {
+    $env:RATTLER_CACHE_DIR
+} else {
+    Join-Path $env:LOCALAPPDATA "rattler\cache"
+}
+
 Write-Host "  Pixi home            : $pixiHome"
+if ($IsolateCache) {
+    Write-Host "  Cache isolation      : ON"
+    Write-Host "  Cache dir (isolated) : $rattlerCacheDir"
+} else {
+    Write-Host "  Cache isolation      : OFF"
+    Write-Host "  Cache dir (system)   : $rattlerCacheDir"
+}
+
+# ---------------------------------------------------------------------------
+# Cold-cache warning — prompt before deleting anything
+# ---------------------------------------------------------------------------
+if ($CacheMode -in @("cold", "both")) {
+    Write-Host ""
+    Write-Host "  *** WARNING ***" -ForegroundColor Yellow
+    if ($IsolateCache) {
+        Write-Host "  The isolated rattler cache will be deleted before each cold run:" -ForegroundColor Yellow
+    } else {
+        Write-Host "  The SYSTEM rattler cache will be deleted before each cold run:" -ForegroundColor Yellow
+    }
+    Write-Host "    $rattlerCacheDir" -ForegroundColor Yellow
+    Write-Host ""
+    if ($IsolateCache) {
+        Write-Host "  Impact: only the benchmark-local cache is affected. Your own pixi" -ForegroundColor Yellow
+        Write-Host "  and conda environments are NOT touched." -ForegroundColor Yellow
+    } else {
+        Write-Host "  Impact: ALL cached conda/rattler packages shared by pixi, conda," -ForegroundColor Yellow
+        Write-Host "  mamba, and other rattler-based tools on this machine will be" -ForegroundColor Yellow
+        Write-Host "  permanently deleted. A full re-download will be required the next" -ForegroundColor Yellow
+        Write-Host "  time any of those tools installs or updates packages." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Consider using -IsolateCache to limit deletion to a local copy." -ForegroundColor Yellow
+    }
+    Write-Host ""
+    if ($Force) {
+        Write-Host "  -Force specified — skipping prompt, proceeding automatically." -ForegroundColor Yellow
+    } else {
+        $answer = Read-Host "  Proceed? [y/N]"
+        if ($answer -notmatch '^[Yy]$') {
+            Write-Host "Aborted."
+            exit 0
+        }
+    }
+    Write-Host ""
+}
 
 # Use the bundled pixi binary so the benchmark is self-contained.
 $pixi = Join-Path $scriptDir "pixi.exe"
@@ -442,12 +494,12 @@ if ($Benchmark -in @("cpp", "all")) {
 
     if ($CacheMode -in @("cold", "both")) {
         Write-Host "[C++] cpp_env_setup_cold — pixi install (empty cache)"
-        $tCppEnvCold = Invoke-PixiEnvSetup -BenchDir $cppDir -PhaseBase "cpp_env_setup" -CacheSuffix "cold" -PixiHome $pixiHome
+        $tCppEnvCold = Invoke-PixiEnvSetup -BenchDir $cppDir -PhaseBase "cpp_env_setup" -CacheSuffix "cold"
     }
 
     if ($CacheMode -in @("warm", "both")) {
         Write-Host "[C++] cpp_env_setup_warm — pixi install (populated cache)"
-        $tCppEnvWarm = Invoke-PixiEnvSetup -BenchDir $cppDir -PhaseBase "cpp_env_setup" -CacheSuffix "warm" -PixiHome $pixiHome
+        $tCppEnvWarm = Invoke-PixiEnvSetup -BenchDir $cppDir -PhaseBase "cpp_env_setup" -CacheSuffix "warm"
     }
 
     Write-Host "[C++] cpp_cmake_gen — CMake configure"
@@ -489,12 +541,12 @@ if ($Benchmark -in @("python", "all")) {
 
     if ($CacheMode -in @("cold", "both")) {
         Write-Host "[Python] py_env_setup_cold — pixi install (empty cache)"
-        $tPyEnvCold = Invoke-PixiEnvSetup -BenchDir $pyDir -PhaseBase "py_env_setup" -CacheSuffix "cold" -PixiHome $pixiHome
+        $tPyEnvCold = Invoke-PixiEnvSetup -BenchDir $pyDir -PhaseBase "py_env_setup" -CacheSuffix "cold"
     }
 
     if ($CacheMode -in @("warm", "both")) {
         Write-Host "[Python] py_env_setup_warm — pixi install (populated cache)"
-        $tPyEnvWarm = Invoke-PixiEnvSetup -BenchDir $pyDir -PhaseBase "py_env_setup" -CacheSuffix "warm" -PixiHome $pixiHome
+        $tPyEnvWarm = Invoke-PixiEnvSetup -BenchDir $pyDir -PhaseBase "py_env_setup" -CacheSuffix "warm"
     }
 
     Write-Host "[Python] py_import — numpy / scipy / matplotlib / pandas / torch"
@@ -556,12 +608,12 @@ if ($Benchmark -in @("node", "all")) {
 
     if ($CacheMode -in @("cold", "both")) {
         Write-Host "[Node.js] node_env_setup_cold — pixi install (empty cache)"
-        $tNodeEnvCold = Invoke-PixiEnvSetup -BenchDir $nodeDir -PhaseBase "node_env_setup" -CacheSuffix "cold" -PixiHome $pixiHome
+        $tNodeEnvCold = Invoke-PixiEnvSetup -BenchDir $nodeDir -PhaseBase "node_env_setup" -CacheSuffix "cold"
     }
 
     if ($CacheMode -in @("warm", "both")) {
         Write-Host "[Node.js] node_env_setup_warm — pixi install (populated cache)"
-        $tNodeEnvWarm = Invoke-PixiEnvSetup -BenchDir $nodeDir -PhaseBase "node_env_setup" -CacheSuffix "warm" -PixiHome $pixiHome
+        $tNodeEnvWarm = Invoke-PixiEnvSetup -BenchDir $nodeDir -PhaseBase "node_env_setup" -CacheSuffix "warm"
     }
 
     # Pixi always installs the default environment to .pixi/envs/default.
