@@ -1,0 +1,14 @@
+[workspace]
+name = "plot-results"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[dependencies]
+python    = ">=3.11"
+matplotlib = ">=3.8"
+pandas    = ">=2.0"
+
+[tasks]
+# Usage: pixi run plot [file1.csv file2.csv ...]
+# If no files given, globs *.csv from the parent directory (repo root).
+plot = "python plot.py"

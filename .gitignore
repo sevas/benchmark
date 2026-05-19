@@ -1,0 +1,27 @@
+# Build output
+cpp_benchmark/build/
+node_benchmark/dist/
+
+# Explicitly track the bundled pixi binary even if *.exe is in a global gitignore
+!pixi.exe
+
+# pixi environments (downloaded, not source)
+**/.pixi/
+
+# npm packages
+node_benchmark/node_modules/
+
+# Benchmark result files (machine-specific, not committed)
+*.csv
+*.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Plot output
+plot_results/results_plot.png
+
+# OS
+.DS_Store
+Thumbs.db

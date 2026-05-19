@@ -1,0 +1,17 @@
+[workspace]
+name = "python-benchmark"
+channels = ["pytorch", "conda-forge"]
+platforms = ["win-64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+numpy = ">=1.26"
+matplotlib = ">=3.8"
+scipy = ">=1.12"
+pandas = ">=2.1"
+# CPU-only PyTorch from the official pytorch channel (no CUDA stack)
+pytorch = ">=2.1,<3"
+cpuonly = "*"
+
+[tasks]
+run-benchmark = "python benchmark_imports.py"

@@ -1,0 +1,14 @@
+[workspace]
+name = "node-benchmark"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[dependencies]
+nodejs = ">=20,<26"
+
+[tasks]
+# These tasks are used as documentation / manual convenience.
+# The benchmark script (run_benchmark.ps1) calls npm directly after priming
+# PATH with the conda env prefix, which is more reliable on Windows.
+npm-install = "npm ci"
+npm-build   = "npm run build"
