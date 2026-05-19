@@ -8,6 +8,9 @@ node_benchmark/dist/
 # pixi environments (downloaded, not source)
 **/.pixi/
 
+# Isolated pixi home used during benchmarks (large, machine-specific)
+.pixi_home/
+
 # npm packages
 node_benchmark/node_modules/
 

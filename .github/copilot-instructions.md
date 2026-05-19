@@ -24,7 +24,20 @@ node_benchmark/            ← Node.js 20 + Vite + React TypeScript app
 pixi.exe                   ← bundled pixi binary (win-64); never remove
 ```
 
-`run_benchmark.ps1` accepts `-Benchmark cpp|python|node|all` (default `all`) and an optional free-form `-Label <string>`.  When a label is given it is appended to the hostname with an underscore in both the CSV filename and the `hostname` column (e.g. `WORKSTATION1_defender-on`), enabling same-machine / different-configuration comparisons in the plot tool.
+`run_benchmark.ps1` accepts `-Benchmark cpp|python|node|all` (default `all`), an optional free-form `-Label <string>`, and an optional `-CacheMode cold|warm|both` (default `both`).  When a label is given it is appended to the hostname with an underscore in both the CSV filename and the `hostname` column (e.g. `WORKSTATION1_defender-on`), enabling same-machine / different-configuration comparisons in the plot tool.
+
+### Pixi cache isolation
+
+The script sets `$env:PIXI_HOME = "<repo>/.pixi_home"` before any pixi call,
+redirecting pixi's entire home (cache + global envs) away from the user's own
+pixi installation.  This directory is **excluded from git** (see `.gitignore`).
+
+- **Cold cache**: delete `$pixiHome/cache` before `pixi install` → forces full download + unpack.
+- **Warm cache**: keep `$pixiHome/cache`, delete only the local `.pixi` env dir → measures unpack only.
+- **Phase names**: `cpp_env_setup_cold`, `cpp_env_setup_warm` (and same for `py_`, `node_`).
+  Legacy bare names (`cpp_env_setup` etc.) appear only in old CSV files (e.g. SIGIL.csv).
+
+The `Invoke-PixiEnvSetup` helper function handles clearing + timing + CSV recording for both modes.
 Output files (`<hostname>.csv`, `<hostname>.txt`) are written to the repo root.
 
 ---
@@ -115,8 +128,9 @@ Output files (`<hostname>.csv`, `<hostname>.txt`) are written to the repo root.
 hostname,phase,duration_seconds,timestamp
 ```
 
-- Phase names follow the convention `<suite>_<step>`, e.g. `cpp_build`,
-  `py_import`, `node_npm_install`.
+- Phase names follow the convention `<suite>_<step>[_cold|_warm]`, e.g.
+  `cpp_env_setup_cold`, `cpp_build`, `py_import`, `node_npm_install`.
+  Cold/warm suffixes are used for env-setup phases only.
 - Each run **appends** rows — do not truncate the CSV.
 - The CSV header row is written only once (if the file does not exist yet).
 

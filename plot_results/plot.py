@@ -34,25 +34,40 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 PHASE_ORDER = [
-    "cpp_env_setup",
+    # C++ suite — cold/warm variants first, then legacy bare name
+    "cpp_env_setup_cold",
+    "cpp_env_setup_warm",
+    "cpp_env_setup",        # legacy (no cache suffix)
     "cpp_cmake_gen",
     "cpp_build",
-    "py_env_setup",
+    # Python suite
+    "py_env_setup_cold",
+    "py_env_setup_warm",
+    "py_env_setup",         # legacy
     "py_import",
-    "node_env_setup",
+    # Node.js suite
+    "node_env_setup_cold",
+    "node_env_setup_warm",
+    "node_env_setup",       # legacy
     "node_npm_install",
     "node_build",
 ]
 
 PHASE_LABELS = {
-    "cpp_env_setup":    "C++ env\nsetup",
-    "cpp_cmake_gen":    "C++ cmake\ngen",
-    "cpp_build":        "C++ build",
-    "py_env_setup":     "Python env\nsetup",
-    "py_import":        "Python\nimport",
-    "node_env_setup":   "Node env\nsetup",
-    "node_npm_install": "npm ci",
-    "node_build":       "vite build",
+    "cpp_env_setup_cold":  "C++ env\n(cold)",
+    "cpp_env_setup_warm":  "C++ env\n(warm)",
+    "cpp_env_setup":       "C++ env\nsetup",
+    "cpp_cmake_gen":       "C++ cmake\ngen",
+    "cpp_build":           "C++ build",
+    "py_env_setup_cold":   "Py env\n(cold)",
+    "py_env_setup_warm":   "Py env\n(warm)",
+    "py_env_setup":        "Python env\nsetup",
+    "py_import":           "Python\nimport",
+    "node_env_setup_cold": "Node env\n(cold)",
+    "node_env_setup_warm": "Node env\n(warm)",
+    "node_env_setup":      "Node env\nsetup",
+    "node_npm_install":    "npm ci",
+    "node_build":          "vite build",
 }
 
 # Vertical separator (None) marks where one benchmark suite ends and the next begins.

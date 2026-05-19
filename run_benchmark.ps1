@@ -22,6 +22,9 @@
     Results are appended to <hostname>.csv at the script root.
     A system-info text file is also written/updated at <hostname>.txt.
 
+    Pixi packages are cached in .pixi_home/ inside the repository root so the
+    benchmark is fully isolated from the user's own pixi installation.
+
     For C++, MSVC (cl.exe) must be installed; vcvarsall.bat is located
     automatically via vswhere.exe or well-known Visual Studio install paths.
 
@@ -36,6 +39,14 @@
     Example: on WORKSTATION1 with -Label "av-enabled" → file WORKSTATION1_av-enabled.csv,
     hostname column "WORKSTATION1_av-enabled".
 
+.PARAMETER CacheMode
+    Controls whether the local pixi package cache is populated before each env-setup
+    phase.  Three values are accepted:
+      cold  — clears the cache before installing (measures download + unpack)
+      warm  — keeps the cache from a previous run (measures unpack only)
+      both  — runs cold then warm in sequence (default); produces two CSV rows per
+              env-setup phase, named *_env_setup_cold and *_env_setup_warm.
+
 .EXAMPLE
     .\run_benchmark.ps1
     .\run_benchmark.ps1 -Benchmark cpp
@@ -43,6 +54,8 @@
     .\run_benchmark.ps1 -Benchmark node
     .\run_benchmark.ps1 -Label "defender-on"
     .\run_benchmark.ps1 -Benchmark cpp -Label "no-av"
+    .\run_benchmark.ps1 -CacheMode cold
+    .\run_benchmark.ps1 -CacheMode warm
 #>
 
 param(
@@ -52,7 +65,14 @@ param(
     # Optional label to distinguish configuration variants on the same machine.
     # Appended to the hostname (e.g. "WORKSTATION1_av-enabled") in both the
     # CSV file name and the hostname column.
-    [string]$Label = ""
+    [string]$Label = "",
+
+    # Controls whether the pixi cache is cleared before each env-setup phase.
+    #   cold  — clear cache then install  → measures full download + unpack
+    #   warm  — keep cache then install   → measures unpack only
+    #   both  — run cold first, then warm (default)
+    [ValidateSet("cold", "warm", "both")]
+    [string]$CacheMode = "both"
 )
 
 Set-StrictMode -Version Latest
@@ -180,6 +200,54 @@ function Measure-Includes {
     }
 }
 
+function Invoke-PixiEnvSetup {
+    <#
+    .SYNOPSIS
+        Run a single pixi install and record the timing.
+    .PARAMETER BenchDir
+        Project directory that contains pixi.toml and will receive .pixi/.
+    .PARAMETER PhaseBase
+        Base phase name, e.g. "cpp_env_setup".  The suffix "_cold" or "_warm"
+        is appended automatically based on $CacheSuffix.
+    .PARAMETER CacheSuffix
+        "cold" or "warm".
+    .PARAMETER PixiHome
+        Path to the isolated PIXI_HOME used for this benchmark run.
+    #>
+    param(
+        [string]$BenchDir,
+        [string]$PhaseBase,
+        [string]$CacheSuffix,
+        [string]$PixiHome
+    )
+
+    if ($CacheSuffix -eq "cold") {
+        $cacheDir = Join-Path $PixiHome "cache"
+        if (Test-Path $cacheDir) {
+            Write-Host "  Clearing pixi cache at $cacheDir ..."
+            Remove-Item -Recurse -Force $cacheDir
+        }
+    }
+
+    $envDir = Join-Path $BenchDir ".pixi"
+    if (Test-Path $envDir) {
+        Write-Host "  Removing existing .pixi environment..."
+        Remove-Item -Recurse -Force $envDir
+    }
+
+    Push-Location $BenchDir
+    $elapsed = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
+    $exitCode = $LASTEXITCODE
+    Pop-Location
+
+    if ($exitCode -ne 0) { throw "pixi install failed for ${PhaseBase}_${CacheSuffix} (exit $exitCode)" }
+
+    $phaseName = "${PhaseBase}_${CacheSuffix}"
+    Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase $phaseName -Seconds $elapsed.TotalSeconds
+    Write-Host ""
+    return $elapsed
+}
+
 function Write-SystemInfo {
     param([string]$InfoPath, [string]$Hostname)
 
@@ -253,6 +321,14 @@ $pyDir     = Join-Path $scriptDir "python_benchmark"
 $nodeDir   = Join-Path $scriptDir "node_benchmark"
 Set-Location $scriptDir
 
+# Redirect pixi's package cache to a local directory so the benchmark is
+# completely isolated from the user's own pixi cache (~/.pixi/cache).
+# This also makes cold-cache tests reproducible: clearing .pixi_home\cache
+# guarantees a download from scratch without touching the user's packages.
+$pixiHome = Join-Path $scriptDir ".pixi_home"
+$env:PIXI_HOME = $pixiHome
+Write-Host "  Pixi home (isolated) : $pixiHome"
+
 # Use the bundled pixi binary so the benchmark is self-contained.
 $pixi = Join-Path $scriptDir "pixi.exe"
 if (-not (Test-Path $pixi)) {
@@ -282,11 +358,12 @@ $infoPath = Join-Path $scriptDir "$hostname.txt"
 Write-Host ""
 Write-Host "========================================"
 Write-Host "  Dev-Workflow Benchmark  [$Benchmark]"
-Write-Host "  Host   : $hostname"
+Write-Host "  Host       : $hostname"
+Write-Host "  CacheMode  : $CacheMode"
 if ($Label -ne "") {
-    Write-Host "  Label  : $Label"
+    Write-Host "  Label      : $Label"
 }
-Write-Host "  Output : $csvPath"
+Write-Host "  Output     : $csvPath"
 Write-Host "========================================"
 Write-Host ""
 
@@ -301,9 +378,12 @@ Write-SystemInfo -InfoPath $infoPath -Hostname $hostname
 Write-Host ""
 
 # Initialize all timing vars to $null so the summary can test what actually ran.
-$tCppEnv = $tCppCmake = $tCppBuild = $null
-$tPyEnv  = $tPyImport = $null
-$tNodeEnv = $tNodeNpmInstall = $tNodeBuild = $null
+$tCppEnvCold = $tCppEnvWarm = $null
+$tCppCmake = $tCppBuild = $null
+$tPyEnvCold  = $tPyEnvWarm = $null
+$tPyImport = $null
+$tNodeEnvCold = $tNodeEnvWarm = $null
+$tNodeNpmInstall = $tNodeBuild = $null
 
 # ---------------------------------------------------------------------------
 # MSVC environment (only needed for C++ benchmark)
@@ -325,23 +405,18 @@ if ($Benchmark -in @("cpp", "all")) {
 # ---------------------------------------------------------------------------
 
 if ($Benchmark -in @("cpp", "all")) {
-    Write-Host "[C++] 1/3 cpp_env_setup — pixi install"
 
-    $pixiEnvDir = Join-Path $cppDir ".pixi"
-    if (Test-Path $pixiEnvDir) {
-        Write-Host "  Removing existing .pixi environment..."
-        Remove-Item -Recurse -Force $pixiEnvDir
+    if ($CacheMode -in @("cold", "both")) {
+        Write-Host "[C++] cpp_env_setup_cold — pixi install (empty cache)"
+        $tCppEnvCold = Invoke-PixiEnvSetup -BenchDir $cppDir -PhaseBase "cpp_env_setup" -CacheSuffix "cold" -PixiHome $pixiHome
     }
 
-    Push-Location $cppDir
-    $tCppEnv  = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
-    $cppEnvExit = $LASTEXITCODE
-    Pop-Location
-    if ($cppEnvExit -ne 0) { throw "pixi install failed (exit $cppEnvExit)" }
-    Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "cpp_env_setup" -Seconds $tCppEnv.TotalSeconds
-    Write-Host ""
+    if ($CacheMode -in @("warm", "both")) {
+        Write-Host "[C++] cpp_env_setup_warm — pixi install (populated cache)"
+        $tCppEnvWarm = Invoke-PixiEnvSetup -BenchDir $cppDir -PhaseBase "cpp_env_setup" -CacheSuffix "warm" -PixiHome $pixiHome
+    }
 
-    Write-Host "[C++] 2/3 cpp_cmake_gen — CMake configure"
+    Write-Host "[C++] cpp_cmake_gen — CMake configure"
 
     $buildDir = Join-Path $cppDir "build"
     if (Test-Path $buildDir) {
@@ -357,7 +432,7 @@ if ($Benchmark -in @("cpp", "all")) {
     Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "cpp_cmake_gen" -Seconds $tCppCmake.TotalSeconds
     Write-Host ""
 
-    Write-Host "[C++] 3/3 cpp_build — cmake --build"
+    Write-Host "[C++] cpp_build — cmake --build"
 
     Push-Location $cppDir
     $tCppBuild  = Measure-Command { cmd /c "`"$pixi`" run build 2>&1" | Out-Host }
@@ -377,23 +452,18 @@ if ($Benchmark -in @("cpp", "all")) {
 # ---------------------------------------------------------------------------
 
 if ($Benchmark -in @("python", "all")) {
-    Write-Host "[Python] 1/2 py_env_setup — pixi install"
 
-    $pyEnvDir = Join-Path $pyDir ".pixi"
-    if (Test-Path $pyEnvDir) {
-        Write-Host "  Removing existing .pixi environment..."
-        Remove-Item -Recurse -Force $pyEnvDir
+    if ($CacheMode -in @("cold", "both")) {
+        Write-Host "[Python] py_env_setup_cold — pixi install (empty cache)"
+        $tPyEnvCold = Invoke-PixiEnvSetup -BenchDir $pyDir -PhaseBase "py_env_setup" -CacheSuffix "cold" -PixiHome $pixiHome
     }
 
-    Push-Location $pyDir
-    $tPyEnv  = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
-    $pyEnvExit = $LASTEXITCODE
-    Pop-Location
-    if ($pyEnvExit -ne 0) { throw "Python pixi install failed (exit $pyEnvExit)" }
-    Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "py_env_setup" -Seconds $tPyEnv.TotalSeconds
-    Write-Host ""
+    if ($CacheMode -in @("warm", "both")) {
+        Write-Host "[Python] py_env_setup_warm — pixi install (populated cache)"
+        $tPyEnvWarm = Invoke-PixiEnvSetup -BenchDir $pyDir -PhaseBase "py_env_setup" -CacheSuffix "warm" -PixiHome $pixiHome
+    }
 
-    Write-Host "[Python] 2/2 py_import — numpy / scipy / matplotlib / pandas / torch"
+    Write-Host "[Python] py_import — numpy / scipy / matplotlib / pandas / torch"
 
     # Agg backend: suppresses font-cache/GUI initialisation so timings reflect
     # module loading rather than display-system warm-up.
@@ -449,21 +519,16 @@ if ($Benchmark -in @("python", "all")) {
 # ---------------------------------------------------------------------------
 
 if ($Benchmark -in @("node", "all")) {
-    Write-Host "[Node.js] 1/3 node_env_setup — pixi install"
 
-    $nodePixiEnvDir = Join-Path $nodeDir ".pixi"
-    if (Test-Path $nodePixiEnvDir) {
-        Write-Host "  Removing existing .pixi environment..."
-        Remove-Item -Recurse -Force $nodePixiEnvDir
+    if ($CacheMode -in @("cold", "both")) {
+        Write-Host "[Node.js] node_env_setup_cold — pixi install (empty cache)"
+        $tNodeEnvCold = Invoke-PixiEnvSetup -BenchDir $nodeDir -PhaseBase "node_env_setup" -CacheSuffix "cold" -PixiHome $pixiHome
     }
 
-    Push-Location $nodeDir
-    $tNodeEnv = Measure-Command { cmd /c "`"$pixi`" install --locked 2>&1" | Out-Host }
-    $nodeEnvExit = $LASTEXITCODE
-    Pop-Location
-    if ($nodeEnvExit -ne 0) { throw "Node.js pixi install failed (exit $nodeEnvExit)" }
-    Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "node_env_setup" -Seconds $tNodeEnv.TotalSeconds
-    Write-Host ""
+    if ($CacheMode -in @("warm", "both")) {
+        Write-Host "[Node.js] node_env_setup_warm — pixi install (populated cache)"
+        $tNodeEnvWarm = Invoke-PixiEnvSetup -BenchDir $nodeDir -PhaseBase "node_env_setup" -CacheSuffix "warm" -PixiHome $pixiHome
+    }
 
     # Pixi always installs the default environment to .pixi/envs/default.
     # We use the full path to npm.cmd so no PATH configuration is needed and
@@ -475,7 +540,7 @@ if ($Benchmark -in @("node", "all")) {
     }
     Write-Host "  Using npm : $npm"
 
-    Write-Host "[Node.js] 2/3 node_npm_install — npm ci"
+    Write-Host "[Node.js] node_npm_install — npm ci"
 
     # Remove node_modules to ensure a clean install every run.
     $nodeModulesDir = Join-Path $nodeDir "node_modules"
@@ -492,7 +557,7 @@ if ($Benchmark -in @("node", "all")) {
     Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "node_npm_install" -Seconds $tNodeNpmInstall.TotalSeconds
     Write-Host ""
 
-    Write-Host "[Node.js] 3/3 node_build — tsc + vite build"
+    Write-Host "[Node.js] node_build — tsc + vite build"
 
     # Remove previous dist/ for a clean build.
     $nodeDistDir = Join-Path $nodeDir "dist"
@@ -517,12 +582,15 @@ Write-Host "========================================"
 Write-Host "  Results written to  : $csvPath"
 Write-Host "  System info written : $infoPath"
 Write-Host "----------------------------------------"
-if ($null -ne $tCppEnv)          { Write-Host ("  cpp_env_setup      : {0:F3} s" -f $tCppEnv.TotalSeconds) }
-if ($null -ne $tCppCmake)        { Write-Host ("  cpp_cmake_gen      : {0:F3} s" -f $tCppCmake.TotalSeconds) }
-if ($null -ne $tCppBuild)        { Write-Host ("  cpp_build          : {0:F3} s" -f $tCppBuild.TotalSeconds) }
-if ($null -ne $tPyEnv)           { Write-Host ("  py_env_setup       : {0:F3} s" -f $tPyEnv.TotalSeconds) }
-if ($null -ne $tPyImport)        { Write-Host ("  py_import          : {0:F3} s" -f $tPyImport.TotalSeconds) }
-if ($null -ne $tNodeEnv)         { Write-Host ("  node_env_setup     : {0:F3} s" -f $tNodeEnv.TotalSeconds) }
-if ($null -ne $tNodeNpmInstall)  { Write-Host ("  node_npm_install   : {0:F3} s" -f $tNodeNpmInstall.TotalSeconds) }
-if ($null -ne $tNodeBuild)       { Write-Host ("  node_build         : {0:F3} s" -f $tNodeBuild.TotalSeconds) }
+if ($null -ne $tCppEnvCold)      { Write-Host ("  cpp_env_setup_cold   : {0:F3} s" -f $tCppEnvCold.TotalSeconds) }
+if ($null -ne $tCppEnvWarm)      { Write-Host ("  cpp_env_setup_warm   : {0:F3} s" -f $tCppEnvWarm.TotalSeconds) }
+if ($null -ne $tCppCmake)        { Write-Host ("  cpp_cmake_gen        : {0:F3} s" -f $tCppCmake.TotalSeconds) }
+if ($null -ne $tCppBuild)        { Write-Host ("  cpp_build            : {0:F3} s" -f $tCppBuild.TotalSeconds) }
+if ($null -ne $tPyEnvCold)       { Write-Host ("  py_env_setup_cold    : {0:F3} s" -f $tPyEnvCold.TotalSeconds) }
+if ($null -ne $tPyEnvWarm)       { Write-Host ("  py_env_setup_warm    : {0:F3} s" -f $tPyEnvWarm.TotalSeconds) }
+if ($null -ne $tPyImport)        { Write-Host ("  py_import            : {0:F3} s" -f $tPyImport.TotalSeconds) }
+if ($null -ne $tNodeEnvCold)     { Write-Host ("  node_env_setup_cold  : {0:F3} s" -f $tNodeEnvCold.TotalSeconds) }
+if ($null -ne $tNodeEnvWarm)     { Write-Host ("  node_env_setup_warm  : {0:F3} s" -f $tNodeEnvWarm.TotalSeconds) }
+if ($null -ne $tNodeNpmInstall)  { Write-Host ("  node_npm_install     : {0:F3} s" -f $tNodeNpmInstall.TotalSeconds) }
+if ($null -ne $tNodeBuild)       { Write-Host ("  node_build           : {0:F3} s" -f $tNodeBuild.TotalSeconds) }
 Write-Host "========================================"

@@ -82,6 +82,11 @@ Open a **PowerShell 7** session at the repository root and run:
 # Tag the run with a label (e.g. to record a specific security-tool configuration)
 .\run_benchmark.ps1 -Label "defender-on"
 .\run_benchmark.ps1 -Label "no-av" -Benchmark cpp
+
+# Choose cache mode: cold (always download), warm (use cached packages), or both (default)
+.\run_benchmark.ps1 -CacheMode cold
+.\run_benchmark.ps1 -CacheMode warm
+.\run_benchmark.ps1 -CacheMode both   # default: runs cold then warm
 ```
 
 When `-Label` is provided it is appended to the machine hostname with an
@@ -96,6 +101,19 @@ you compare the **same machine under different conditions** in the same plot:
 
 The label is free-form — any string is accepted.
 
+### Cache modes
+
+The pixi cache is isolated per-run to `<repo>/.pixi_home/` so it never
+interferes with the user's own pixi installation.
+
+| Mode | What it measures |
+|---|---|
+| `cold` | Full download **+** unpack — as if running on a clean machine |
+| `warm` | Unpack only — packages are already in the local cache |
+| `both` | Runs cold first, then warm; produces both rows in the same CSV file |
+
+The cold-vs-warm delta isolates network/download cost from disk-IO cost.
+
 The script requires no elevated (admin) privileges.
 
 ---
@@ -106,7 +124,8 @@ The script requires no elevated (admin) privileges.
 
 | Phase | Description |
 |---|---|
-| `cpp_env_setup` | `pixi install --locked` — downloads and unpacks all conda packages (Boost, Eigen, fmt, spdlog, nlohmann\_json, abseil, range-v3, CMake, Ninja, MSVC headers) |
+| `cpp_env_setup_cold` | `pixi install --locked` with empty cache — downloads **and** unpacks all conda packages |
+| `cpp_env_setup_warm` | `pixi install --locked` with populated cache — unpacks only (no download) |
 | `cpp_cmake_gen` | `cmake -G Ninja …` — runs `find_package` for every dependency and generates the build system |
 | `cpp_build` | `cmake --build` — parallel compilation of 31 translation units (main + 30 modules), each including ~25 heavy headers |
 
@@ -117,7 +136,8 @@ After the build, the script re-runs the compiler with `/showIncludes` on
 
 | Phase | Description |
 |---|---|
-| `py_env_setup` | `pixi install --locked` — installs Python 3.11, numpy, scipy, matplotlib, pandas, and pytorch (CPU-only) |
+| `py_env_setup_cold` | `pixi install --locked` with empty cache — downloads **and** unpacks Python 3.11, numpy, scipy, matplotlib, pandas, pytorch (CPU-only) |
+| `py_env_setup_warm` | `pixi install --locked` with populated cache — unpacks only |
 | `py_import` | Full process time for `pixi run python benchmark_imports.py` — covers pixi activation, Python interpreter startup, and importing all sub-modules of the five packages |
 
 The script logs the number of modules loaded and a list of top-level packages
@@ -127,9 +147,10 @@ to the system-info file.
 
 | Phase | Description |
 |---|---|
-| `node_env_setup` | `pixi install --locked` — installs Node.js 20 via conda-forge |
-| `node_npm_install` | `npm ci` — installs all 379 npm packages from `package-lock.json` into a clean `node_modules/` |
-| `node_build` | `tsc --noEmit && vite build` — type-checks the project then bundles with Vite (3 230 modules transformed) |
+| `node_env_setup_cold` | `pixi install --locked` with empty cache — downloads **and** unpacks Node.js 20 via conda-forge |
+| `node_env_setup_warm` | `pixi install --locked` with populated cache — unpacks only |
+| `node_npm_install` | `npm ci` — installs all npm packages from `package-lock.json` into a clean `node_modules/` |
+| `node_build` | `tsc --noEmit && vite build` — type-checks the project then bundles with Vite |
 
 ---
 
