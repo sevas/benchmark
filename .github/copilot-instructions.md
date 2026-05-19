@@ -28,9 +28,11 @@ pixi.exe                   ← bundled pixi binary (win-64); never remove
 
 ### Pixi cache isolation
 
-The script sets `$env:PIXI_HOME = "<repo>/.pixi_home"` before any pixi call,
-redirecting pixi's entire home (cache + global envs) away from the user's own
-pixi installation.  This directory is **excluded from git** (see `.gitignore`).
+The script sets **both** env vars before any pixi call:
+- `$env:PIXI_HOME = "<repo>/.pixi_home"` — redirects pixi's global home (bin, global envs)
+- `$env:RATTLER_CACHE_DIR = "<repo>/.pixi_home/cache"` — redirects the conda package cache (`PIXI_HOME` alone does **not** move the cache; rattler uses `%LOCALAPPDATA%\rattler\cache` by default)
+
+This directory is **excluded from git** (see `.gitignore`).
 
 - **Cold cache**: delete `$pixiHome/cache` before `pixi install` → forces full download + unpack.
 - **Warm cache**: keep `$pixiHome/cache`, delete only the local `.pixi` env dir → measures unpack only.

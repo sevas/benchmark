@@ -24,6 +24,7 @@
 
     Pixi packages are cached in .pixi_home/ inside the repository root so the
     benchmark is fully isolated from the user's own pixi installation.
+    Both PIXI_HOME and RATTLER_CACHE_DIR are redirected to this folder.
 
     For C++, MSVC (cl.exe) must be installed; vcvarsall.bat is located
     automatically via vswhere.exe or well-known Visual Studio install paths.
@@ -321,13 +322,15 @@ $pyDir     = Join-Path $scriptDir "python_benchmark"
 $nodeDir   = Join-Path $scriptDir "node_benchmark"
 Set-Location $scriptDir
 
-# Redirect pixi's package cache to a local directory so the benchmark is
-# completely isolated from the user's own pixi cache (~/.pixi/cache).
-# This also makes cold-cache tests reproducible: clearing .pixi_home\cache
-# guarantees a download from scratch without touching the user's packages.
+# Redirect pixi's home AND package cache to a local directory so the benchmark
+# is completely isolated from the user's own pixi installation.
+# PIXI_HOME  — controls global envs/bin (pixi respects this natively)
+# RATTLER_CACHE_DIR — controls the conda package cache (PIXI_HOME alone does NOT move the cache)
 $pixiHome = Join-Path $scriptDir ".pixi_home"
-$env:PIXI_HOME = $pixiHome
+$env:PIXI_HOME        = $pixiHome
+$env:RATTLER_CACHE_DIR = Join-Path $pixiHome "cache"
 Write-Host "  Pixi home (isolated) : $pixiHome"
+Write-Host "  Pixi cache (isolated): $($env:RATTLER_CACHE_DIR)"
 
 # Use the bundled pixi binary so the benchmark is self-contained.
 $pixi = Join-Path $scriptDir "pixi.exe"

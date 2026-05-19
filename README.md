@@ -104,7 +104,9 @@ The label is free-form — any string is accepted.
 ### Cache modes
 
 The pixi cache is isolated per-run to `<repo>/.pixi_home/` so it never
-interferes with the user's own pixi installation.
+interferes with the user's own pixi installation. Two env vars are required:
+- `PIXI_HOME` — redirects pixi's global home directory
+- `RATTLER_CACHE_DIR` — redirects the actual conda package cache (`PIXI_HOME` alone does **not** move it; rattler defaults to `%LOCALAPPDATA%\rattler\cache`)
 
 | Mode | What it measures |
 |---|---|
