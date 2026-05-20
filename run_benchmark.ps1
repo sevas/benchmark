@@ -636,6 +636,13 @@ if ($Benchmark -in @("node", "all")) {
     $savedPath = $env:PATH
     $env:PATH = "$nodeCondaPrefix;$env:PATH"
 
+    # Sanity-check: show which node.exe will actually be resolved by child processes.
+    $resolvedNode = cmd /c "where node 2>nul" | Select-Object -First 1
+    Write-Host "  node.exe resolved via PATH : $resolvedNode"
+    if ($resolvedNode -ne $nodeExe) {
+        Write-Warning "node.exe resolved via PATH does not match pixi env! Expected: $nodeExe"
+    }
+
     try {
         Write-Host "[Node.js] node_npm_install — npm ci"
 
