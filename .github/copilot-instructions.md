@@ -91,12 +91,12 @@ Output files (`<hostname>.csv`, `<hostname>.txt`) are written to the repo root.
 - Uses `npm ci` (not `npm install`) for the benchmark phases.  This requires a
   committed `package-lock.json`.  If you add/change npm deps, run `npm install`
   locally to regenerate `package-lock.json`, then commit it.
-- **Do NOT call npm via `pixi run`** or via PATH in the benchmark.  After
-  `pixi install --locked`, the PS1 script constructs the full path to `npm.cmd`
-  directly as `$nodeDir\.pixi\envs\default\npm.cmd` (pixi always places the
-  default environment there).  Calling `& $npm ci` with the full path means
-  `npm.cmd`'s own `%~dp0\node.exe` check resolves correctly regardless of PATH,
-  eliminating all child-process PATH issues.
+- After `pixi install --locked`, the PS1 script constructs the full path to `npm.cmd`
+  directly as `$nodeDir\.pixi\envs\default\npm.cmd` and **prepends `$nodeCondaPrefix`
+  to `PATH`** for the duration of the node benchmark.  Prepending PATH is necessary
+  because npm lifecycle scripts (`vite`, `tsc`, etc. from `node_modules/.bin`) call
+  `node` by name; without it they pick up whatever `node.exe` appears first on the
+  system PATH instead of the pixi env's node.  PATH is restored in a `finally` block.
 - **Do NOT use `--scripts-prepend-node-path=true` as a CLI arg.**  npm 11
   splits `--flag=value` into separate argv tokens; `true` is then treated as a
   workspace specifier, causing `npm ci` to exit 1 immediately.

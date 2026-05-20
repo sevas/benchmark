@@ -615,47 +615,64 @@ if ($Benchmark -in @("node", "all")) {
     }
 
     # Pixi always installs the default environment to .pixi/envs/default.
-    # We use the full path to npm.cmd so no PATH configuration is needed and
-    # npm.cmd's %~dp0 check resolves node.exe from the same directory reliably.
+    # We use the full path to npm.cmd AND prepend $nodeCondaPrefix to PATH so
+    # that scripts invoked by npm (vite, tsc, etc. from node_modules/.bin) also
+    # resolve node.exe from the pixi env rather than whatever node is on the
+    # system PATH.
     $nodeCondaPrefix = Join-Path $nodeDir ".pixi\envs\default"
     $npm = Join-Path $nodeCondaPrefix "npm.cmd"
     if (-not (Test-Path $npm)) {
         throw "npm.cmd not found at $npm — pixi install may have failed."
     }
-    Write-Host "  Using npm : $npm"
-
-    Write-Host "[Node.js] node_npm_install — npm ci"
-
-    # Remove node_modules to ensure a clean install every run.
-    $nodeModulesDir = Join-Path $nodeDir "node_modules"
-    if (Test-Path $nodeModulesDir) {
-        Write-Host "  Removing existing node_modules..."
-        Remove-Item -Recurse -Force $nodeModulesDir
+    $nodeExe = Join-Path $nodeCondaPrefix "node.exe"
+    if (-not (Test-Path $nodeExe)) {
+        throw "node.exe not found at $nodeExe — pixi install may have failed."
     }
+    Write-Host "  Using npm  : $npm"
+    Write-Host "  Using node : $nodeExe"
 
-    Push-Location $nodeDir
-    $tNodeNpmInstall = Measure-Command { cmd /c "`"$npm`" ci 2>&1" | Out-Host }
-    $nodeNpmExit = $LASTEXITCODE
-    Pop-Location
-    if ($nodeNpmExit -ne 0) { throw "npm ci failed (exit $nodeNpmExit)" }
-    Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "node_npm_install" -Seconds $tNodeNpmInstall.TotalSeconds
-    Write-Host ""
+    # Prepend the pixi env to PATH for the duration of the node benchmark so
+    # child processes (npm lifecycle scripts, vite, tsc) all use the correct node.
+    $savedPath = $env:PATH
+    $env:PATH = "$nodeCondaPrefix;$env:PATH"
 
-    Write-Host "[Node.js] node_build — tsc + vite build"
+    try {
+        Write-Host "[Node.js] node_npm_install — npm ci"
 
-    # Remove previous dist/ for a clean build.
-    $nodeDistDir = Join-Path $nodeDir "dist"
-    if (Test-Path $nodeDistDir) {
-        Remove-Item -Recurse -Force $nodeDistDir
+        # Remove node_modules to ensure a clean install every run.
+        $nodeModulesDir = Join-Path $nodeDir "node_modules"
+        if (Test-Path $nodeModulesDir) {
+            Write-Host "  Removing existing node_modules..."
+            Remove-Item -Recurse -Force $nodeModulesDir
+        }
+
+        Push-Location $nodeDir
+        $tNodeNpmInstall = Measure-Command { cmd /c "`"$npm`" ci 2>&1" | Out-Host }
+        $nodeNpmExit = $LASTEXITCODE
+        Pop-Location
+        if ($nodeNpmExit -ne 0) { throw "npm ci failed (exit $nodeNpmExit)" }
+        Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "node_npm_install" -Seconds $tNodeNpmInstall.TotalSeconds
+        Write-Host ""
+
+        Write-Host "[Node.js] node_build — tsc + vite build"
+
+        # Remove previous dist/ for a clean build.
+        $nodeDistDir = Join-Path $nodeDir "dist"
+        if (Test-Path $nodeDistDir) {
+            Remove-Item -Recurse -Force $nodeDistDir
+        }
+
+        Push-Location $nodeDir
+        $tNodeBuild = Measure-Command { cmd /c "`"$npm`" run build 2>&1" | Out-Host }
+        $nodeBuildExit = $LASTEXITCODE
+        Pop-Location
+        if ($nodeBuildExit -ne 0) { throw "npm run build failed (exit $nodeBuildExit)" }
+        Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "node_build" -Seconds $tNodeBuild.TotalSeconds
+        Write-Host ""
     }
-
-    Push-Location $nodeDir
-    $tNodeBuild = Measure-Command { cmd /c "`"$npm`" run build 2>&1" | Out-Host }
-    $nodeBuildExit = $LASTEXITCODE
-    Pop-Location
-    if ($nodeBuildExit -ne 0) { throw "npm run build failed (exit $nodeBuildExit)" }
-    Write-CsvRow -CsvPath $csvPath -Hostname $hostname -Phase "node_build" -Seconds $tNodeBuild.TotalSeconds
-    Write-Host ""
+    finally {
+        $env:PATH = $savedPath
+    }
 }
 
 # ---------------------------------------------------------------------------
